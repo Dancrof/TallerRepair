@@ -1,0 +1,50 @@
+.root {
+    -fx-background-color: linear-gradient(to bottom, #0f172a, #1d4ed8);
+    -fx-font-family: "Segoe UI", sans-serif;
+}
+
+.login-panel {
+    -fx-background-color: rgba(255, 255, 255, 0.96);
+    -fx-background-radius: 20px;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.25), 18, 0.2, 0, 8);
+}
+
+.login-brand {
+    -fx-font-size: 24px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #1d4ed8;
+}
+
+.login-title {
+    -fx-font-size: 28px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #0f172a;
+}
+
+.login-field {
+    -fx-padding: 12px;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+    -fx-border-color: #dbeafe;
+    -fx-border-width: 1px;
+    -fx-pref-height: 42px;
+}
+
+.login-button {
+    -fx-background-color: linear-gradient(to bottom, #2563eb, #1d4ed8);
+    -fx-text-fill: white;
+    -fx-font-weight: 700;
+    -fx-padding: 12px 18px 12px 18px;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+}
+
+.login-error {
+    -fx-text-fill: #b91c1c;
+    -fx-font-weight: 600;
+}
+
+.login-hint {
+    -fx-text-fill: #475569;
+    -fx-font-size: 12px;
+}

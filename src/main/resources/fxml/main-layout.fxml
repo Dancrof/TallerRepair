@@ -30,6 +30,7 @@
             <Button text="Órdenes" userData="ordenes" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Inventario" userData="inventario" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Ventas" userData="ventas" onAction="#onMenuClick" styleClass="nav-button"/>
+            <Button text="Presupuestos" userData="presupuestos" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Caja" userData="caja" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Reportes" userData="reportes" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Configuración" userData="configuracion" onAction="#onMenuClick" styleClass="nav-button"/>

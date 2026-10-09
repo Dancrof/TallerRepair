@@ -16,6 +16,7 @@ module com.tallerrepair.tallerrepair {
     exports com.tallerrepair.tallerrepair;
     exports com.tallerrepair.tallerrepair.controller;
     exports com.tallerrepair.tallerrepair.entity;
+    exports com.tallerrepair.tallerrepair.enums;
     exports com.tallerrepair.tallerrepair.repository;
     exports com.tallerrepair.tallerrepair.service;
     exports com.tallerrepair.tallerrepair.security;

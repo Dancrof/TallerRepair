@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.NoResultException;
 
 import java.util.Optional;
+import java.util.List;
 
 public class SystemSettingRepository {
 
@@ -35,6 +36,27 @@ public class SystemSettingRepository {
             }
             entityManager.getTransaction().commit();
             return entity;
+        } finally {
+            if (entityManager.getTransaction().isActive()) {
+                entityManager.getTransaction().rollback();
+            }
+            entityManager.close();
+        }
+    }
+
+    public List<SystemSetting> saveAll(List<SystemSetting> settings) {
+        EntityManager entityManager = JpaUtil.getEntityManagerFactory().createEntityManager();
+        try {
+            entityManager.getTransaction().begin();
+            for (SystemSetting setting : settings) {
+                if (setting.getId() == null) {
+                    entityManager.persist(setting);
+                } else {
+                    entityManager.merge(setting);
+                }
+            }
+            entityManager.getTransaction().commit();
+            return settings;
         } finally {
             if (entityManager.getTransaction().isActive()) {
                 entityManager.getTransaction().rollback();

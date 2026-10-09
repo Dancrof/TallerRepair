@@ -2,6 +2,10 @@ package com.tallerrepair.tallerrepair;
 
 import com.tallerrepair.tallerrepair.controller.LoginController;
 import com.tallerrepair.tallerrepair.service.AuthService;
+import com.tallerrepair.tallerrepair.service.BudgetDataService;
+import com.tallerrepair.tallerrepair.service.CashDataService;
+import com.tallerrepair.tallerrepair.service.ProductDataService;
+import com.tallerrepair.tallerrepair.service.SaleDataService;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -16,6 +20,10 @@ public class Main extends Application {
     public void start(Stage primaryStage) throws Exception {
         this.primaryStage = primaryStage;
         new AuthService().initializeDefaultSecurity();
+        new BudgetDataService().ensureDemoBudgetData();
+        new ProductDataService().ensureDemoInventoryData();
+        new SaleDataService().ensureDemoSalesData();
+        new CashDataService().ensureDemoCashSession();
         showLogin();
     }
 

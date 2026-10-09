@@ -1,7 +1,9 @@
 package com.tallerrepair.tallerrepair.service;
 
 import com.tallerrepair.tallerrepair.entity.Device;
+import com.tallerrepair.tallerrepair.entity.Payment;
 import com.tallerrepair.tallerrepair.entity.ServiceOrder;
+import com.tallerrepair.tallerrepair.enums.PaymentMethod;
 import com.tallerrepair.tallerrepair.enums.ServiceOrderPriority;
 import com.tallerrepair.tallerrepair.enums.ServiceOrderStatus;
 import com.tallerrepair.tallerrepair.repository.ServiceOrderRepository;
@@ -21,6 +23,11 @@ public class ServiceOrderDataService {
     }
 
     public ServiceOrder create(ServiceOrder order) {
+        return create(order, BigDecimal.ZERO, PaymentMethod.CASH, null);
+    }
+
+    public ServiceOrder create(ServiceOrder order, BigDecimal initialPayment, PaymentMethod paymentMethod,
+                               String paymentReference) {
         if (order == null || order.getCustomer() == null || order.getCustomer().getId() == null) {
             throw new IllegalArgumentException("Selecciona un cliente.");
         }
@@ -40,7 +47,16 @@ public class ServiceOrderDataService {
         if (order.getEstimatedDeliveryAt() != null && order.getEstimatedDeliveryAt().isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("La entrega estimada no puede ser anterior a hoy.");
         }
+        BigDecimal safeInitialPayment = initialPayment == null ? BigDecimal.ZERO : initialPayment;
+        if (safeInitialPayment.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("El anticipo no puede ser negativo.");
+        }
         order.setDeclaredFailure(order.getDeclaredFailure().trim());
+        order.setIntakeCondition(clean(order.getIntakeCondition()));
+        order.setIntakeAccessories(clean(order.getIntakeAccessories()));
+        order.setDiagnosis(clean(order.getDiagnosis()));
+        order.setWorkPerformed(clean(order.getWorkPerformed()));
+        order.setObservations(clean(order.getObservations()));
         if (order.getNotes() != null) {
             order.setNotes(order.getNotes().isBlank() ? null : order.getNotes().trim());
         }
@@ -63,8 +79,21 @@ public class ServiceOrderDataService {
         if (order.getPriority() == null) {
             order.setPriority(ServiceOrderPriority.NORMAL);
         }
+        order.setPaid(safeInitialPayment);
         serviceOrderService.updateTotals(order);
-        return repository.save(order);
+        if (safeInitialPayment.compareTo(order.getTotal()) > 0) {
+            throw new IllegalArgumentException("El anticipo no puede superar el total de la orden.");
+        }
+
+        Payment payment = null;
+        if (safeInitialPayment.compareTo(BigDecimal.ZERO) > 0) {
+            payment = new Payment();
+            payment.setAmount(safeInitialPayment);
+            payment.setPaymentMethod(paymentMethod == null ? PaymentMethod.CASH : paymentMethod);
+            payment.setReferenceNumber(clean(paymentReference));
+            payment.setReceivedAt(LocalDateTime.now());
+        }
+        return repository.saveWithPayment(order, payment);
     }
 
     public void changeStatus(ServiceOrder order, ServiceOrderStatus status, String notes) {
@@ -84,5 +113,9 @@ public class ServiceOrderDataService {
         } catch (NumberFormatException exception) {
             return 0L;
         }
+    }
+
+    private String clean(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

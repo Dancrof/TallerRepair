@@ -7,13 +7,17 @@ import com.tallerrepair.tallerrepair.entity.CashSession;
 import com.tallerrepair.tallerrepair.entity.Customer;
 import com.tallerrepair.tallerrepair.entity.Device;
 import com.tallerrepair.tallerrepair.entity.Payment;
+import com.tallerrepair.tallerrepair.entity.Permission;
 import com.tallerrepair.tallerrepair.entity.Product;
+import com.tallerrepair.tallerrepair.entity.Role;
 import com.tallerrepair.tallerrepair.entity.Sale;
 import com.tallerrepair.tallerrepair.entity.SaleItem;
 import com.tallerrepair.tallerrepair.entity.ServiceOrder;
+import com.tallerrepair.tallerrepair.entity.User;
 import com.tallerrepair.tallerrepair.enums.BudgetStatus;
 import com.tallerrepair.tallerrepair.enums.CustomerType;
 import com.tallerrepair.tallerrepair.enums.DeviceType;
+import com.tallerrepair.tallerrepair.enums.PaymentMethod;
 import com.tallerrepair.tallerrepair.enums.ServiceOrderPriority;
 import com.tallerrepair.tallerrepair.enums.ServiceOrderStatus;
 import com.tallerrepair.tallerrepair.enums.SaleStatus;
@@ -25,9 +29,11 @@ import com.tallerrepair.tallerrepair.service.DatabaseBackupService;
 import com.tallerrepair.tallerrepair.service.DeviceDataService;
 import com.tallerrepair.tallerrepair.service.ProductDataService;
 import com.tallerrepair.tallerrepair.service.ReportCsvExportService;
+import com.tallerrepair.tallerrepair.service.RolePermissionService;
 import com.tallerrepair.tallerrepair.service.SaleDataService;
 import com.tallerrepair.tallerrepair.service.ServiceOrderDataService;
 import com.tallerrepair.tallerrepair.service.SystemSettingsService;
+import com.tallerrepair.tallerrepair.session.AppSession;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -38,6 +44,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Dialog;
@@ -48,6 +55,10 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -64,8 +75,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 public class MainController {
@@ -78,6 +91,21 @@ public class MainController {
 
     @FXML
     private Label statusBadge;
+
+    @FXML
+    private Label systemNameLabel;
+
+    @FXML
+    private Label sessionUserLabel;
+
+    @FXML
+    private Label sessionRoleLabel;
+
+    @FXML
+    private Label footerCopyrightLabel;
+
+    @FXML
+    private Label footerVersionLabel;
 
     @FXML
     private StackPane contentPane;
@@ -94,10 +122,18 @@ public class MainController {
     private final CashDataService cashDataService = new CashDataService();
     private final DashboardService dashboardService = new DashboardService();
     private final ReportCsvExportService reportCsvExportService = new ReportCsvExportService();
+    private final RolePermissionService rolePermissionService = new RolePermissionService();
     private Button activeButton;
+    private Runnable onLogout;
+
+    public void setOnLogout(Runnable onLogout) {
+        this.onLogout = onLogout;
+    }
 
     @FXML
     private void initialize() {
+        updateBusinessBranding(systemSettingsService.getCompanyProfile().name());
+        footerVersionLabel.setText("Versión " + AppConfig.APP_VERSION);
         moduleViews.put("dashboard", createModuleView(
                 "Dashboard",
                 "Resumen general del taller",
@@ -129,6 +165,7 @@ public class MainController {
                 "Informes, indicadores y análisis de rendimiento del taller."
         ));
         renderModule("dashboard");
+        refreshSessionIdentity();
     }
 
     @FXML
@@ -140,8 +177,30 @@ public class MainController {
             return;
         }
 
+        if (!hasModuleAccess(moduleKey)) {
+            showMessage(Alert.AlertType.WARNING, "Acceso denegado", "Tu usuario no tiene permiso para abrir este módulo.");
+            return;
+        }
+
         updateActiveButton(clickedButton);
         renderModule(moduleKey);
+    }
+
+    @FXML
+    private void handleLogout() {
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+                "¿Quieres cerrar la sesión de "
+                        + (AppSession.getCurrentUser() == null ? "este usuario" : AppSession.getCurrentUser().getUsername())
+                        + "?",
+                ButtonType.CANCEL, ButtonType.OK);
+        confirmation.setTitle("Cerrar sesión");
+        confirmation.setHeaderText("Confirmar cierre de sesión");
+        confirmation.showAndWait().filter(ButtonType.OK::equals).ifPresent(button -> {
+            AppSession.clear();
+            if (onLogout != null) {
+                onLogout.run();
+            }
+        });
     }
 
     private void updateActiveButton(Button selectedButton) {
@@ -154,6 +213,11 @@ public class MainController {
     }
 
     private void renderModule(String moduleKey) {
+        if (!hasModuleAccess(moduleKey)) {
+            showMessage(Alert.AlertType.WARNING, "Acceso denegado", "Tu usuario no tiene permiso para abrir este módulo.");
+            return;
+        }
+
         Node view;
 
         switch (moduleKey) {
@@ -167,6 +231,7 @@ public class MainController {
             case "presupuestos" -> view = createBudgetView();
             case "caja" -> view = createCashView();
             case "reportes" -> view = createReportsView();
+            case "roles" -> view = createRolesPermissionsView();
             default -> view = moduleViews.getOrDefault(moduleKey, createDashboardView());
         }
 
@@ -182,6 +247,7 @@ public class MainController {
             case "presupuestos" -> setHeader("Presupuestos", "Cotizaciones, anticipos y saldos");
             case "caja" -> setHeader("Caja", "Apertura, cierre y arqueo");
             case "reportes" -> setHeader("Reportes", "Indicadores del taller");
+            case "roles" -> setHeader("Roles y permisos", "Control de acceso de usuarios");
             case "configuracion" -> setHeader("Configuración", "Parámetros del sistema");
             default -> setHeader("Dashboard", "Resumen general del taller");
         }
@@ -191,6 +257,57 @@ public class MainController {
         pageTitle.setText(title);
         pageSubtitle.setText(subtitle);
         statusBadge.setText("Sistema local");
+    }
+
+    private boolean hasModuleAccess(String moduleKey) {
+        if ("dashboard".equals(moduleKey)) {
+            return true;
+        }
+        String permissionCode = switch (moduleKey) {
+            case "clientes" -> "CLIENTES_VIEW";
+            case "equipos", "ordenes", "presupuestos" -> "ORDERS_VIEW";
+            case "inventario" -> "INVENTORY_VIEW";
+            case "ventas" -> "SALES_VIEW";
+            case "caja" -> "CASH_VIEW";
+            case "reportes" -> "REPORTS_VIEW";
+            case "roles", "configuracion" -> "SETTINGS_MANAGE";
+            default -> null;
+        };
+        return permissionCode == null || rolePermissionService.hasPermission(AppSession.getCurrentUser(), permissionCode);
+    }
+
+    private boolean hasPermission(String permissionCode) {
+        return rolePermissionService.hasPermission(AppSession.getCurrentUser(), permissionCode);
+    }
+
+    private void refreshCurrentUserAuthorization() {
+        User currentUser = AppSession.getCurrentUser();
+        if (currentUser == null) {
+            return;
+        }
+        rolePermissionService.getActiveUsersWithRoles().stream()
+                .filter(user -> user.getId().equals(currentUser.getId()))
+                .findFirst()
+                .ifPresent(user -> {
+                    AppSession.setCurrentUser(user);
+                    refreshSessionIdentity();
+                });
+    }
+
+    private void refreshSessionIdentity() {
+        User currentUser = AppSession.getCurrentUser();
+        if (currentUser == null) {
+            sessionUserLabel.setText("Sin sesión");
+            sessionRoleLabel.setText("Autenticación requerida");
+            sessionUserLabel.setTooltip(null);
+            return;
+        }
+
+        sessionUserLabel.setText(currentUser.getFullName() + " · " + currentUser.getUsername());
+        String roles = currentUser.getRoles().stream().map(Role::getName).sorted()
+                .reduce((left, right) -> left + ", " + right).orElse("Sin rol asignado");
+        sessionRoleLabel.setText("Roles: " + roles);
+        sessionUserLabel.setTooltip(new Tooltip(currentUser.getEmail()));
     }
 
     private Node createModuleView(String title, String summary, String description) {
@@ -475,7 +592,8 @@ public class MainController {
     private void exportReport(String reportType, List<ReportRow> rows) {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Exportar reporte CSV");
-        chooser.setInitialFileName("tallerrepair-" + reportType.toLowerCase(java.util.Locale.ROOT) + ".csv");
+        chooser.setInitialFileName(toFileSlug(systemSettingsService.getCompanyProfile().name())
+            + "-" + normalizeText(reportType).replaceAll("[^a-z0-9]+", "-") + ".csv");
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo CSV", "*.csv"));
         java.io.File destination = chooser.showSaveDialog(contentPane.getScene().getWindow());
         if (destination == null) {
@@ -489,6 +607,358 @@ public class MainController {
         } catch (IOException exception) {
             showMessage(Alert.AlertType.ERROR, "No se pudo exportar", exception.getMessage());
         }
+    }
+
+
+    private String toFileSlug(String value) {
+        String slug = normalizeText(value).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        return slug.isBlank() ? "tallerrepair" : slug;
+    }
+    private Node createRolesPermissionsView() {
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(24));
+
+        Label title = new Label("Roles y permisos");
+        title.getStyleClass().add("module-title");
+        Label subtitle = new Label("Define permisos por perfil y asigna perfiles a usuarios activos.");
+        subtitle.getStyleClass().add("module-description");
+
+        List<Role> roles = rolePermissionService.getRolesWithPermissions();
+        List<Permission> permissions = rolePermissionService.getAllPermissions();
+        List<User> users = rolePermissionService.getActiveUsersWithRoles();
+        TabPane tabs = new TabPane();
+
+        TableView<Role> rolesTable = new TableView<>(FXCollections.observableArrayList(roles));
+        TableColumn<Role, String> roleNameColumn = new TableColumn<>("Rol");
+        roleNameColumn.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(cell.getValue().getName()));
+        TableColumn<Role, String> rolePermissionCountColumn = new TableColumn<>("Permisos");
+        rolePermissionCountColumn.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
+                String.valueOf(cell.getValue().getPermissions().size())));
+        rolesTable.getColumns().addAll(roleNameColumn, rolePermissionCountColumn);
+        rolesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        rolesTable.setPrefWidth(300);
+
+        TextField roleNameField = new TextField();
+        roleNameField.setPromptText("Ej. RECEPCION");
+        TextArea roleDescriptionField = new TextArea();
+        roleDescriptionField.setPromptText("Descripción");
+        roleDescriptionField.setPrefRowCount(2);
+        Map<Long, CheckBox> rolePermissionChecks = new LinkedHashMap<>();
+        GridPane permissionGrid = createPermissionGrid(permissions, rolePermissionChecks);
+        ScrollPane permissionScroll = new ScrollPane(permissionGrid);
+        permissionScroll.setFitToWidth(true);
+        permissionScroll.setPrefViewportHeight(360);
+
+        Label roleMessage = new Label();
+        roleMessage.getStyleClass().add("module-description");
+        Button newRoleButton = new Button("Nuevo rol");
+        newRoleButton.getStyleClass().add("secondary-button");
+        newRoleButton.setOnAction(event -> {
+            rolesTable.getSelectionModel().clearSelection();
+            roleNameField.clear();
+            roleDescriptionField.clear();
+            rolePermissionChecks.values().forEach(checkBox -> checkBox.setSelected(false));
+            roleMessage.setText("");
+        });
+        Button saveRoleButton = new Button("Guardar rol");
+        saveRoleButton.getStyleClass().add("primary-button");
+        saveRoleButton.setOnAction(event -> {
+            Role selected = rolesTable.getSelectionModel().getSelectedItem();
+            Set<Long> selectedPermissionIds = rolePermissionChecks.entrySet().stream()
+                    .filter(entry -> entry.getValue().isSelected()).map(Map.Entry::getKey)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            try {
+                rolePermissionService.saveRole(selected == null ? null : selected.getId(),
+                        roleNameField.getText(), roleDescriptionField.getText(), selectedPermissionIds);
+                refreshCurrentUserAuthorization();
+                renderModule("roles");
+            } catch (IllegalArgumentException exception) {
+                roleMessage.setText(exception.getMessage());
+            }
+        });
+        rolesTable.getSelectionModel().selectedItemProperty().addListener((observable, previous, selected) -> {
+            if (selected == null) {
+                return;
+            }
+            roleNameField.setText(selected.getName());
+            roleDescriptionField.setText(valueOrEmpty(selected.getDescription()));
+            Set<Long> selectedIds = selected.getPermissions().stream().map(Permission::getId)
+                    .collect(java.util.stream.Collectors.toSet());
+            rolePermissionChecks.forEach((id, checkBox) -> checkBox.setSelected(selectedIds.contains(id)));
+            roleMessage.setText("");
+        });
+
+        VBox roleEditor = new VBox(10);
+        roleEditor.getStyleClass().add("info-panel");
+        Label roleEditorTitle = new Label("Permisos del rol");
+        roleEditorTitle.getStyleClass().add("module-summary");
+        GridPane roleFields = new GridPane();
+        roleFields.setHgap(12);
+        roleFields.setVgap(8);
+        addSettingsField(roleFields, "Nombre", roleNameField, 0);
+        addSettingsField(roleFields, "Descripción", roleDescriptionField, 1);
+        roleEditor.getChildren().addAll(roleEditorTitle, roleFields, permissionScroll,
+                new HBox(10, newRoleButton, saveRoleButton, roleMessage));
+        HBox roleContent = new HBox(14, rolesTable, roleEditor);
+        HBox.setHgrow(roleEditor, Priority.ALWAYS);
+        VBox.setVgrow(roleContent, Priority.ALWAYS);
+        Tab rolesTab = new Tab("Roles", roleContent);
+        rolesTab.setClosable(false);
+
+        TableView<User> usersTable = new TableView<>(FXCollections.observableArrayList(users));
+        TableColumn<User, String> usernameColumn = new TableColumn<>("Usuario");
+        usernameColumn.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(cell.getValue().getUsername()));
+        TableColumn<User, String> fullNameColumn = new TableColumn<>("Nombre");
+        fullNameColumn.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(cell.getValue().getFullName()));
+        TableColumn<User, String> assignedRolesColumn = new TableColumn<>("Roles asignados");
+        assignedRolesColumn.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
+                cell.getValue().getRoles().stream().map(Role::getName).sorted()
+                        .reduce((left, right) -> left + ", " + right).orElse("Sin rol")));
+        usersTable.getColumns().addAll(usernameColumn, fullNameColumn, assignedRolesColumn);
+        usersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        usersTable.setPrefWidth(500);
+
+        Button createUserButton = new Button("Nuevo usuario");
+        createUserButton.getStyleClass().add("primary-button");
+        createUserButton.setDisable(!hasPermission("USERS_CREATE"));
+        createUserButton.setOnAction(event -> showUserDialog(roles, null));
+        Button editUserButton = new Button("Editar");
+        editUserButton.getStyleClass().add("secondary-button");
+        editUserButton.setDisable(true);
+        Button deactivateUserButton = new Button("Desactivar");
+        deactivateUserButton.getStyleClass().add("secondary-button");
+        deactivateUserButton.setDisable(true);
+        usersTable.getSelectionModel().selectedItemProperty().addListener((observable, previous, selected) -> {
+            editUserButton.setDisable(selected == null || !hasPermission("USERS_UPDATE"));
+            deactivateUserButton.setDisable(selected == null || !hasPermission("USERS_DELETE"));
+        });
+        editUserButton.setOnAction(event -> {
+            User selected = usersTable.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                showUserDialog(roles, selected);
+            }
+        });
+        deactivateUserButton.setOnAction(event -> {
+            User selected = usersTable.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                return;
+            }
+            Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+                    "¿Desactivar al usuario " + selected.getUsername() + "? No podrá volver a iniciar sesión.",
+                    ButtonType.CANCEL, ButtonType.OK);
+            confirmation.setTitle("Desactivar usuario");
+            confirmation.setHeaderText("Confirmar desactivación");
+            confirmation.showAndWait().filter(ButtonType.OK::equals).ifPresent(button -> {
+                try {
+                    rolePermissionService.deactivateUser(selected.getId());
+                    refreshCurrentUserAuthorization();
+                    renderModule("roles");
+                } catch (IllegalArgumentException exception) {
+                    showMessage(Alert.AlertType.ERROR, "No se pudo desactivar", exception.getMessage());
+                }
+            });
+        });
+        VBox userListPanel = new VBox(10,
+                new HBox(10, createUserButton, editUserButton, deactivateUserButton), usersTable);
+        userListPanel.getStyleClass().add("info-panel");
+        VBox.setVgrow(usersTable, Priority.ALWAYS);
+
+        Map<Long, CheckBox> userRoleChecks = new LinkedHashMap<>();
+        VBox userRoleList = new VBox(8);
+        for (Role role : roles) {
+            CheckBox checkBox = new CheckBox(role.getName());
+            checkBox.setTooltip(new Tooltip(valueOrEmpty(role.getDescription())));
+            userRoleChecks.put(role.getId(), checkBox);
+            userRoleList.getChildren().add(checkBox);
+        }
+        Label selectedUserLabel = new Label("Selecciona un usuario");
+        selectedUserLabel.getStyleClass().add("module-summary");
+        Label userMessage = new Label();
+        userMessage.getStyleClass().add("module-description");
+        Button saveUserRolesButton = new Button("Guardar asignación");
+        saveUserRolesButton.getStyleClass().add("primary-button");
+        saveUserRolesButton.setDisable(true);
+        usersTable.getSelectionModel().selectedItemProperty().addListener((observable, previous, selected) -> {
+            saveUserRolesButton.setDisable(selected == null);
+            selectedUserLabel.setText(selected == null ? "Selecciona un usuario"
+                    : selected.getFullName() + " · " + selected.getUsername());
+            Set<Long> selectedIds = selected == null ? Set.of()
+                    : selected.getRoles().stream().map(Role::getId).collect(java.util.stream.Collectors.toSet());
+            userRoleChecks.forEach((id, checkBox) -> checkBox.setSelected(selectedIds.contains(id)));
+            userMessage.setText("");
+        });
+        saveUserRolesButton.setOnAction(event -> {
+            User selected = usersTable.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                return;
+            }
+            Set<Long> selectedRoleIds = userRoleChecks.entrySet().stream()
+                    .filter(entry -> entry.getValue().isSelected()).map(Map.Entry::getKey)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            try {
+                rolePermissionService.saveUserRoles(selected.getId(), selectedRoleIds);
+                refreshCurrentUserAuthorization();
+                renderModule("roles");
+            } catch (IllegalArgumentException exception) {
+                userMessage.setText(exception.getMessage());
+            }
+        });
+        VBox userEditor = new VBox(12);
+        userEditor.getStyleClass().add("info-panel");
+        Label userEditorTitle = new Label("Roles del usuario");
+        userEditorTitle.getStyleClass().add("module-summary");
+        userEditor.getChildren().addAll(userEditorTitle, selectedUserLabel, userRoleList,
+                new HBox(10, saveUserRolesButton, userMessage));
+        HBox userContent = new HBox(14, userListPanel, userEditor);
+        VBox.setVgrow(userContent, Priority.ALWAYS);
+        HBox.setHgrow(userListPanel, Priority.ALWAYS);
+        HBox.setHgrow(userEditor, Priority.ALWAYS);
+        Tab usersTab = new Tab("Usuarios", userContent);
+        usersTab.setClosable(false);
+
+        tabs.getTabs().addAll(rolesTab, usersTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        root.getChildren().addAll(title, subtitle, tabs);
+        return root;
+    }
+
+    private void showUserDialog(List<Role> roles, User existingUser) {
+        boolean editing = existingUser != null;
+        if (roles.isEmpty()) {
+            showMessage(Alert.AlertType.INFORMATION, "No hay roles", "Crea un rol antes de dar de alta un usuario.");
+            return;
+        }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(editing ? "Editar usuario" : "Nuevo usuario");
+        dialog.setHeaderText(editing ? "Actualiza la cuenta y sus roles." : "Crea una cuenta y asígnale uno o más roles.");
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CANCEL, ButtonType.OK);
+
+        TextField usernameField = new TextField();
+        usernameField.setPromptText("usuario.apellido");
+        if (editing) {
+            usernameField.setText(existingUser.getUsername());
+        }
+        TextField fullNameField = new TextField();
+        fullNameField.setPromptText("Nombre completo");
+        if (editing) {
+            fullNameField.setText(existingUser.getFullName());
+        }
+        TextField emailField = new TextField();
+        emailField.setPromptText("usuario@empresa.com");
+        if (editing) {
+            emailField.setText(existingUser.getEmail());
+        }
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText(editing ? "Vacío para conservar la actual" : "Mínimo 8 caracteres");
+        PasswordField confirmPasswordField = new PasswordField();
+        confirmPasswordField.setPromptText(editing ? "Repite la nueva contraseña" : "Repite la contraseña");
+
+        VBox roleChoices = new VBox(6);
+        Map<Long, CheckBox> roleChecks = new LinkedHashMap<>();
+        Set<Long> assignedRoleIds = editing
+                ? existingUser.getRoles().stream().map(Role::getId).collect(java.util.stream.Collectors.toSet())
+                : Set.of();
+        for (Role role : roles) {
+            CheckBox roleCheck = new CheckBox(role.getName());
+            roleCheck.setSelected(assignedRoleIds.contains(role.getId())
+                    || (!editing && assignedRoleIds.isEmpty() && "RECEPCION".equals(role.getName())));
+            roleCheck.setTooltip(new Tooltip(valueOrEmpty(role.getDescription())));
+            roleChecks.put(role.getId(), roleCheck);
+            roleChoices.getChildren().add(roleCheck);
+        }
+        if (!editing && roleChecks.values().stream().noneMatch(CheckBox::isSelected)) {
+            roleChecks.values().stream().findFirst().ifPresent(checkBox -> checkBox.setSelected(true));
+        }
+
+        GridPane form = new GridPane();
+        form.setHgap(12);
+        form.setVgap(10);
+        form.setPadding(new Insets(10, 4, 4, 4));
+        addSettingsField(form, "Usuario", usernameField, 0);
+        addSettingsField(form, "Nombre completo", fullNameField, 1);
+        addSettingsField(form, "Correo", emailField, 2);
+        addSettingsField(form, "Contraseña", passwordField, 3);
+        addSettingsField(form, "Confirmar contraseña", confirmPasswordField, 4);
+        Label rolesLabel = new Label("Roles");
+        rolesLabel.getStyleClass().add("metric-label");
+        form.add(rolesLabel, 0, 5);
+        form.add(roleChoices, 1, 5);
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().setPrefWidth(520);
+
+        while (dialog.showAndWait().filter(ButtonType.OK::equals).isPresent()) {
+            if (!passwordField.getText().isBlank()
+                    && !passwordField.getText().equals(confirmPasswordField.getText())) {
+                showMessage(Alert.AlertType.ERROR, "No se pudo crear el usuario", "Las contraseñas no coinciden.");
+                continue;
+            }
+            Set<Long> selectedRoleIds = roleChecks.entrySet().stream()
+                    .filter(entry -> entry.getValue().isSelected()).map(Map.Entry::getKey)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            if (selectedRoleIds.isEmpty()) {
+                showMessage(Alert.AlertType.ERROR, editing ? "No se pudo editar el usuario" : "No se pudo crear el usuario",
+                        "Asigna al menos un rol.");
+                continue;
+            }
+            try {
+                if (editing) {
+                    rolePermissionService.updateUser(existingUser.getId(), usernameField.getText(), fullNameField.getText(),
+                            emailField.getText(), passwordField.getText(), selectedRoleIds);
+                    refreshCurrentUserAuthorization();
+                } else {
+                    rolePermissionService.createUser(usernameField.getText(), fullNameField.getText(),
+                            emailField.getText(), passwordField.getText(), selectedRoleIds);
+                }
+                renderModule("roles");
+                return;
+            } catch (IllegalArgumentException exception) {
+                showMessage(Alert.AlertType.ERROR,
+                        editing ? "No se pudo editar el usuario" : "No se pudo crear el usuario", exception.getMessage());
+            }
+        }
+    }
+
+    private GridPane createPermissionGrid(List<Permission> permissions, Map<Long, CheckBox> checks) {
+        GridPane grid = new GridPane();
+        grid.setHgap(14);
+        grid.setVgap(8);
+        int index = 0;
+        for (Permission permission : permissions) {
+            CheckBox checkBox = new CheckBox(permissionLabel(permission));
+            checkBox.setTooltip(new Tooltip(permission.getCode() + "\n" + displayValue(permission.getDescription())));
+            checks.put(permission.getId(), checkBox);
+            grid.add(checkBox, index % 3, index / 3);
+            index++;
+        }
+        return grid;
+    }
+
+    private String permissionLabel(Permission permission) {
+        return switch (permission.getCode()) {
+            case "CLIENTES_VIEW" -> "Ver clientes";
+            case "CLIENTES_CREATE" -> "Crear clientes";
+            case "CLIENTES_UPDATE" -> "Editar clientes";
+            case "CLIENTES_DELETE" -> "Eliminar clientes";
+            case "ORDERS_VIEW" -> "Ver órdenes";
+            case "ORDERS_CREATE" -> "Crear órdenes";
+            case "ORDERS_UPDATE" -> "Editar órdenes";
+            case "ORDERS_DELETE" -> "Eliminar órdenes";
+            case "INVENTORY_VIEW" -> "Ver inventario";
+            case "INVENTORY_CREATE" -> "Crear productos";
+            case "INVENTORY_UPDATE" -> "Editar productos";
+            case "SALES_VIEW" -> "Ver ventas";
+            case "SALES_CREATE" -> "Registrar ventas";
+            case "CASH_VIEW" -> "Ver caja";
+            case "CASH_OPEN" -> "Abrir caja";
+            case "CASH_CLOSE" -> "Cerrar caja";
+            case "REPORTS_VIEW" -> "Ver reportes";
+            case "USERS_CREATE" -> "Crear usuarios";
+            case "USERS_UPDATE" -> "Editar usuarios";
+            case "USERS_DELETE" -> "Desactivar usuarios";
+            case "SETTINGS_MANAGE" -> "Administrar configuración";
+            default -> permission.getName();
+        };
     }
 
     private Node createConfigurationView() {
@@ -533,6 +1003,12 @@ public class MainController {
                 systemSettingsService.saveCompanyProfile(new SystemSettingsService.CompanyProfile(
                         nameField.getText(), taxIdField.getText(), phoneField.getText(),
                         emailField.getText(), addressField.getText()));
+                String systemName = nameField.getText().trim();
+                updateBusinessBranding(systemName);
+                if (contentPane.getScene() != null
+                        && contentPane.getScene().getWindow() instanceof javafx.stage.Stage stage) {
+                    stage.setTitle(systemName);
+                }
                 saveResult.setText("Datos guardados.");
             } catch (IllegalArgumentException exception) {
                 saveResult.setText(exception.getMessage());
@@ -590,6 +1066,11 @@ public class MainController {
 
         root.getChildren().addAll(header, companyPanel, backupPanel);
         return root;
+    }
+
+    private void updateBusinessBranding(String businessName) {
+        systemNameLabel.setText(businessName);
+        footerCopyrightLabel.setText("Derechos reservados por " + businessName + ". Desarrollado por Dancroff");
     }
 
     private void addSettingsField(GridPane form, String label, Node control, int row) {
@@ -658,6 +1139,7 @@ public class MainController {
         clearButton.getStyleClass().add("secondary-button");
         Button newOrderButton = new Button("Nueva orden");
         newOrderButton.getStyleClass().add("primary-button");
+        newOrderButton.setDisable(!hasPermission("ORDERS_CREATE"));
         newOrderButton.setOnAction(event -> showServiceOrderDialog());
         HBox toolbar = new HBox(10, searchField, statusFilter, clearButton, newOrderButton);
         toolbar.getStyleClass().add("filter-toolbar");
@@ -715,6 +1197,9 @@ public class MainController {
         Label customerValue = new Label("-");
         Label deviceValue = new Label("-");
         Label failureValue = new Label("-");
+        Label intakeConditionValue = new Label("-");
+        Label intakeAccessoriesValue = new Label("-");
+        Label observationsValue = new Label("-");
         Label diagnosisValue = new Label("-");
         Label workValue = new Label("-");
         Label deliveryValue = new Label("-");
@@ -722,10 +1207,13 @@ public class MainController {
         addCustomerDetail(details, 0, "Cliente", customerValue);
         addCustomerDetail(details, 1, "Equipo", deviceValue);
         addCustomerDetail(details, 2, "Falla declarada", failureValue);
-        addCustomerDetail(details, 3, "Diagnóstico", diagnosisValue);
-        addCustomerDetail(details, 4, "Trabajo realizado", workValue);
-        addCustomerDetail(details, 5, "Entrega estimada", deliveryValue);
-        addCustomerDetail(details, 6, "Total · saldo", totalValue);
+        addCustomerDetail(details, 3, "Condición al recibir", intakeConditionValue);
+        addCustomerDetail(details, 4, "Accesorios recibidos", intakeAccessoriesValue);
+        addCustomerDetail(details, 5, "Observaciones / señas", observationsValue);
+        addCustomerDetail(details, 6, "Diagnóstico", diagnosisValue);
+        addCustomerDetail(details, 7, "Trabajo realizado", workValue);
+        addCustomerDetail(details, 8, "Entrega estimada", deliveryValue);
+        addCustomerDetail(details, 9, "Total · cobrado · saldo", totalValue);
 
         ComboBox<ServiceOrderStatus> statusField = new ComboBox<>(
                 FXCollections.observableArrayList(ServiceOrderStatus.values()));
@@ -751,18 +1239,22 @@ public class MainController {
             boolean hasSelection = selected != null;
             statusField.setDisable(!hasSelection);
             statusNotes.setDisable(!hasSelection);
-            changeStatusButton.setDisable(!hasSelection);
+            changeStatusButton.setDisable(!hasSelection || !hasPermission("ORDERS_UPDATE"));
             if (hasSelection) {
                 ServiceOrder order = selected.order();
                 detailNumber.setText(order.getOrderNumber());
                 customerValue.setText(customerDisplayName(order.getCustomer()));
                 deviceValue.setText(deviceDisplayName(order.getDevice()));
                 failureValue.setText(displayValue(order.getDeclaredFailure()));
+                intakeConditionValue.setText(displayValue(order.getIntakeCondition()));
+                intakeAccessoriesValue.setText(displayValue(order.getIntakeAccessories()));
+                observationsValue.setText(displayValue(order.getObservations()));
                 diagnosisValue.setText(displayValue(order.getDiagnosis()));
                 workValue.setText(displayValue(order.getWorkPerformed()));
                 deliveryValue.setText(order.getEstimatedDeliveryAt() == null
                         ? "Sin fecha" : order.getEstimatedDeliveryAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-                totalValue.setText(formatCurrency(order.getTotal()) + " · " + formatCurrency(order.getBalance()));
+                totalValue.setText(formatCurrency(order.getTotal()) + " · " + formatCurrency(order.getPaid())
+                    + " · " + formatCurrency(order.getBalance()));
                 statusField.setValue(order.getStatus());
                 statusNotes.clear();
             } else {
@@ -770,6 +1262,9 @@ public class MainController {
                 customerValue.setText("-");
                 deviceValue.setText("-");
                 failureValue.setText("-");
+                intakeConditionValue.setText("-");
+                intakeAccessoriesValue.setText("-");
+                observationsValue.setText("-");
                 diagnosisValue.setText("-");
                 workValue.setText("-");
                 deliveryValue.setText("-");
@@ -851,6 +1346,37 @@ public class MainController {
         customerField.setValue(customers.get(0));
         updateDeviceChoices.run();
 
+        Label customerDocument = new Label("-");
+        Label customerContact = new Label("-");
+        Label customerAddress = new Label("-");
+        Label deviceIdentity = new Label("-");
+        Label deviceSerial = new Label("-");
+        GridPane identityDetails = new GridPane();
+        identityDetails.setHgap(16);
+        identityDetails.setVgap(6);
+        addCustomerDetail(identityDetails, 0, "Documento", customerDocument);
+        addCustomerDetail(identityDetails, 1, "Teléfono / correo", customerContact);
+        addCustomerDetail(identityDetails, 2, "Dirección", customerAddress);
+        addCustomerDetail(identityDetails, 3, "Equipo", deviceIdentity);
+        addCustomerDetail(identityDetails, 4, "IMEI / serie", deviceSerial);
+
+        Runnable updateIdentityDetails = () -> {
+            Customer customer = customerField.getValue();
+            customerDocument.setText(customer == null ? "-" : displayValue(customer.getDocument()));
+            customerContact.setText(customer == null ? "-" : String.join(" · ", List.of(
+                valueOrEmpty(customer.getPhone()), valueOrEmpty(customer.getEmail())).stream()
+                .filter(value -> !value.isBlank()).toList()));
+            customerAddress.setText(customer == null ? "-" : displayLocation(customer));
+            Device device = deviceField.getValue();
+            deviceIdentity.setText(device == null ? "-" : deviceTypeLabel(device.getDeviceType()) + " · " + deviceDisplayName(device));
+            deviceSerial.setText(device == null ? "-" : String.join(" · ", List.of(
+                valueOrEmpty(device.getImei()), valueOrEmpty(device.getSerialNumber())).stream()
+                .filter(value -> !value.isBlank()).toList()));
+        };
+        customerField.valueProperty().addListener((observable, previous, selected) -> updateIdentityDetails.run());
+        deviceField.valueProperty().addListener((observable, previous, selected) -> updateIdentityDetails.run());
+        updateIdentityDetails.run();
+
         ComboBox<ServiceOrderPriority> priorityField = new ComboBox<>(
                 FXCollections.observableArrayList(ServiceOrderPriority.values()));
         priorityField.setConverter(new javafx.util.StringConverter<>() {
@@ -866,27 +1392,108 @@ public class MainController {
             }
         });
         priorityField.setValue(ServiceOrderPriority.NORMAL);
+        TextArea intakeConditionField = new TextArea(valueOrEmpty(deviceField.getValue() == null
+            ? null : deviceField.getValue().getPhysicalCondition()));
+        intakeConditionField.setPromptText("Rayones, golpes, pantalla, carcasa, estado general...");
+        intakeConditionField.setPrefRowCount(2);
+        TextArea intakeAccessoriesField = new TextArea(valueOrEmpty(deviceField.getValue() == null
+            ? null : deviceField.getValue().getAccessories()));
+        intakeAccessoriesField.setPromptText("Cargador, funda, tarjeta SIM, memoria...");
+        intakeAccessoriesField.setPrefRowCount(2);
+        deviceField.valueProperty().addListener((observable, previous, selected) -> {
+            intakeConditionField.setText(valueOrEmpty(selected == null ? null : selected.getPhysicalCondition()));
+            intakeAccessoriesField.setText(valueOrEmpty(selected == null ? null : selected.getAccessories()));
+        });
+        TextArea observationsField = new TextArea();
+        observationsField.setPromptText("Señas particulares, daños visibles y observaciones de recepción");
+        observationsField.setPrefRowCount(2);
         TextArea failureField = new TextArea();
         failureField.setPromptText("Describe el problema que indica el cliente");
-        failureField.setPrefRowCount(3);
+        failureField.setPrefRowCount(2);
+        TextArea diagnosisField = new TextArea();
+        diagnosisField.setPromptText("Completar después del diagnóstico técnico");
+        diagnosisField.setPrefRowCount(2);
+        TextArea workPerformedField = new TextArea();
+        workPerformedField.setPromptText("Completar al realizar la reparación");
+        workPerformedField.setPrefRowCount(2);
         DatePicker deliveryField = new DatePicker(LocalDate.now().plusDays(5));
         TextField estimatedCostField = new TextField("0.00");
+        TextField surchargeField = new TextField("0.00");
+        TextField discountField = new TextField("0.00");
+        TextField initialPaymentField = new TextField("0.00");
+        ComboBox<PaymentMethod> paymentMethodField = new ComboBox<>(
+            FXCollections.observableArrayList(PaymentMethod.values()));
+        paymentMethodField.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(PaymentMethod method) {
+            return method == null ? "" : paymentMethodLabel(method);
+            }
+
+            @Override
+            public PaymentMethod fromString(String value) {
+            return java.util.Arrays.stream(PaymentMethod.values())
+                .filter(method -> paymentMethodLabel(method).equals(value)).findFirst().orElse(null);
+            }
+        });
+        paymentMethodField.setValue(PaymentMethod.CASH);
+        Runnable updatePaymentMethodState = () -> {
+            try {
+                paymentMethodField.setDisable(new BigDecimal(initialPaymentField.getText().trim().replace(',', '.'))
+                        .compareTo(BigDecimal.ZERO) <= 0);
+            } catch (NumberFormatException exception) {
+                paymentMethodField.setDisable(false);
+            }
+        };
+        initialPaymentField.textProperty().addListener((observable, previous, current) -> updatePaymentMethodState.run());
+        updatePaymentMethodState.run();
         TextArea notesField = new TextArea();
+        notesField.setPromptText("Notas internas de la orden");
         notesField.setPrefRowCount(2);
 
         GridPane form = new GridPane();
         form.setHgap(12);
         form.setVgap(9);
         form.setPadding(new Insets(10, 4, 4, 4));
-        addDeviceFormField(form, "Cliente", customerField, 0);
-        addDeviceFormField(form, "Equipo", deviceField, 1);
-        addDeviceFormField(form, "Prioridad", priorityField, 2);
-        addDeviceFormField(form, "Entrega estimada", deliveryField, 3);
-        addDeviceFormField(form, "Costo estimado (€)", estimatedCostField, 4);
-        addDeviceFormField(form, "Falla declarada", failureField, 5);
-        addDeviceFormField(form, "Notas", notesField, 6);
-        dialog.getDialogPane().setContent(form);
-        dialog.getDialogPane().setPrefWidth(580);
+        Label identityTitle = new Label("Datos de recepción");
+        identityTitle.getStyleClass().add("module-summary");
+        form.add(identityTitle, 0, 0, 2, 1);
+        form.add(new Label("Cliente"), 0, 1);
+        form.add(customerField, 1, 1);
+        form.add(new Label("Equipo"), 0, 2);
+        form.add(deviceField, 1, 2);
+        form.add(identityDetails, 0, 3, 2, 1);
+        addDeviceFormField(form, "Condición al recibir", intakeConditionField, 4);
+        addDeviceFormField(form, "Accesorios recibidos", intakeAccessoriesField, 5);
+        addDeviceFormField(form, "Observaciones / señas", observationsField, 6);
+        addDeviceFormField(form, "Falla declarada", failureField, 7);
+
+        Label workTitle = new Label("Diagnóstico y trabajo");
+        workTitle.getStyleClass().add("module-summary");
+        form.add(workTitle, 0, 8, 2, 1);
+        addDeviceFormField(form, "Diagnóstico", diagnosisField, 9);
+        addDeviceFormField(form, "Reparación / trabajo", workPerformedField, 10);
+
+        Label financialTitle = new Label("Cobros y resumen financiero");
+        financialTitle.getStyleClass().add("module-summary");
+        form.add(financialTitle, 0, 11, 2, 1);
+        addDeviceFormField(form, "Costo base / trabajo (€)", estimatedCostField, 12);
+        addDeviceFormField(form, "Recargo (€)", surchargeField, 13);
+        addDeviceFormField(form, "Descuento (€)", discountField, 14);
+        addDeviceFormField(form, "Anticipo (€)", initialPaymentField, 15);
+        addDeviceFormField(form, "Forma de pago", paymentMethodField, 16);
+
+        Label schedulingTitle = new Label("Programación");
+        schedulingTitle.getStyleClass().add("module-summary");
+        form.add(schedulingTitle, 0, 17, 2, 1);
+        addDeviceFormField(form, "Prioridad", priorityField, 18);
+        addDeviceFormField(form, "Entrega estimada", deliveryField, 19);
+        addDeviceFormField(form, "Notas internas", notesField, 20);
+        ScrollPane formScroll = new ScrollPane(form);
+        formScroll.setFitToWidth(true);
+        formScroll.setPrefViewportHeight(600);
+        dialog.getDialogPane().setContent(formScroll);
+        dialog.getDialogPane().setPrefWidth(720);
+        dialog.getDialogPane().setPrefHeight(760);
 
         while (dialog.showAndWait().filter(ButtonType.OK::equals).isPresent()) {
             try {
@@ -898,8 +1505,16 @@ public class MainController {
                 order.setEstimatedDeliveryAt(deliveryField.getValue());
                 order.setDeclaredFailure(failureField.getText());
                 order.setEstimatedCost(new BigDecimal(estimatedCostField.getText().trim().replace(',', '.')));
+                order.setSurcharge(new BigDecimal(surchargeField.getText().trim().replace(',', '.')));
+                order.setDiscount(new BigDecimal(discountField.getText().trim().replace(',', '.')));
+                order.setIntakeCondition(intakeConditionField.getText());
+                order.setIntakeAccessories(intakeAccessoriesField.getText());
+                order.setObservations(observationsField.getText());
+                order.setDiagnosis(diagnosisField.getText());
+                order.setWorkPerformed(workPerformedField.getText());
                 order.setNotes(notesField.getText());
-                serviceOrderDataService.create(order);
+                BigDecimal initialPayment = new BigDecimal(initialPaymentField.getText().trim().replace(',', '.'));
+                serviceOrderDataService.create(order, initialPayment, paymentMethodField.getValue(), null);
                 renderModule("ordenes");
                 return;
             } catch (IllegalArgumentException exception) {
@@ -928,6 +1543,17 @@ public class MainController {
             case NORMAL -> "Normal";
             case HIGH -> "Alta";
             case URGENT -> "Urgente";
+        };
+    }
+
+    private String paymentMethodLabel(PaymentMethod method) {
+        return switch (method) {
+            case CASH -> "Efectivo";
+            case CARD -> "Tarjeta";
+            case BANK_TRANSFER -> "Transferencia";
+            case CHECK -> "Cheque";
+            case CREDIT -> "Crédito";
+            case OTHER -> "Otro";
         };
     }
 
@@ -973,6 +1599,7 @@ public class MainController {
 
         Button newCustomerButton = new Button("Nuevo cliente");
         newCustomerButton.getStyleClass().add("primary-button");
+        newCustomerButton.setDisable(!hasPermission("CLIENTES_CREATE"));
         newCustomerButton.setOnAction(event -> showCustomerDialog(null));
 
         HBox toolbar = new HBox(10, searchField, typeFilter, clearButton, newCustomerButton);
@@ -1048,8 +1675,8 @@ public class MainController {
 
         table.getSelectionModel().selectedItemProperty().addListener((observable, previous, selected) -> {
             boolean hasSelection = selected != null;
-            editButton.setDisable(!hasSelection);
-            deactivateButton.setDisable(!hasSelection);
+            editButton.setDisable(!hasSelection || !hasPermission("CLIENTES_UPDATE"));
+            deactivateButton.setDisable(!hasSelection || !hasPermission("CLIENTES_DELETE"));
             if (hasSelection) {
                 Customer customer = selected.customer();
                 detailName.setText(selected.nameProperty().get());
@@ -1130,6 +1757,7 @@ public class MainController {
         clearButton.getStyleClass().add("secondary-button");
         Button newDeviceButton = new Button("Nuevo equipo");
         newDeviceButton.getStyleClass().add("primary-button");
+        newDeviceButton.setDisable(!hasPermission("ORDERS_CREATE"));
         newDeviceButton.setOnAction(event -> showDeviceDialog(null));
 
         HBox toolbar = new HBox(10, searchField, typeFilter, clearButton, newDeviceButton);
@@ -1201,7 +1829,7 @@ public class MainController {
         editButton.setDisable(true);
         table.getSelectionModel().selectedItemProperty().addListener((observable, previous, selected) -> {
             boolean hasSelection = selected != null;
-            editButton.setDisable(!hasSelection);
+            editButton.setDisable(!hasSelection || !hasPermission("ORDERS_UPDATE"));
             if (hasSelection) {
                 Device device = selected.device();
                 detailName.setText(selected.modelProperty().get());

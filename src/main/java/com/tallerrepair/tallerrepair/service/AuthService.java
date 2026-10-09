@@ -4,8 +4,6 @@ import com.tallerrepair.tallerrepair.entity.Permission;
 import com.tallerrepair.tallerrepair.entity.Role;
 import com.tallerrepair.tallerrepair.entity.User;
 import com.tallerrepair.tallerrepair.persistence.JpaUtil;
-import com.tallerrepair.tallerrepair.repository.PermissionRepository;
-import com.tallerrepair.tallerrepair.repository.RoleRepository;
 import com.tallerrepair.tallerrepair.repository.UserRepository;
 import com.tallerrepair.tallerrepair.security.PasswordHasher;
 import jakarta.persistence.EntityManager;
@@ -67,6 +65,9 @@ public class AuthService {
                     "CASH_OPEN",
                     "CASH_CLOSE",
                     "REPORTS_VIEW",
+                    "USERS_CREATE",
+                    "USERS_UPDATE",
+                    "USERS_DELETE",
                     "SETTINGS_MANAGE"
             );
 
@@ -99,6 +100,15 @@ public class AuthService {
             createRoleIfMissing(entityManager, "CAJERO", "Atención y cobranza", permissionCodesSubset(allPermissions, List.of(
                     "SALES_VIEW", "SALES_CREATE", "CASH_VIEW", "CASH_OPEN", "CASH_CLOSE", "REPORTS_VIEW"
             )));
+
+                Set<String> userAdministrationRoles = Set.of("ADMINISTRADOR", "GERENTE");
+                for (String roleName : userAdministrationRoles) {
+                Role role = entityManager.createQuery("SELECT r FROM Role r LEFT JOIN FETCH r.permissions WHERE r.name = :name", Role.class)
+                    .setParameter("name", roleName)
+                    .getSingleResult();
+                role.getPermissions().addAll(permissionCodesSubset(allPermissions,
+                    List.of("USERS_CREATE", "USERS_UPDATE", "USERS_DELETE")));
+                }
 
             if (entityManager
                     .createQuery("SELECT COUNT(u) FROM User u WHERE u.username = :username", Long.class)

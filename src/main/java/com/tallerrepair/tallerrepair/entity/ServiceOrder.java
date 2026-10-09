@@ -60,6 +60,12 @@ public class ServiceOrder extends BaseEntity {
     @Column(name = "declared_failure", columnDefinition = "TEXT")
     private String declaredFailure;
 
+    @Column(name = "intake_condition", columnDefinition = "TEXT")
+    private String intakeCondition;
+
+    @Column(name = "intake_accessories", columnDefinition = "TEXT")
+    private String intakeAccessories;
+
     @Column(name = "diagnosis", columnDefinition = "TEXT")
     private String diagnosis;
 
@@ -182,6 +188,22 @@ public class ServiceOrder extends BaseEntity {
 
     public void setDeclaredFailure(String declaredFailure) {
         this.declaredFailure = declaredFailure;
+    }
+
+    public String getIntakeCondition() {
+        return intakeCondition;
+    }
+
+    public void setIntakeCondition(String intakeCondition) {
+        this.intakeCondition = intakeCondition;
+    }
+
+    public String getIntakeAccessories() {
+        return intakeAccessories;
+    }
+
+    public void setIntakeAccessories(String intakeAccessories) {
+        this.intakeAccessories = intakeAccessories;
     }
 
     public String getDiagnosis() {

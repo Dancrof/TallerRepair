@@ -13,7 +13,8 @@ public class CashSessionRepository {
         EntityManager entityManager = JpaUtil.getEntityManagerFactory().createEntityManager();
         try {
             return entityManager
-                    .createQuery("SELECT c FROM CashSession c WHERE c.sessionNumber = :sessionNumber", CashSession.class)
+                    .createQuery("SELECT DISTINCT c FROM CashSession c LEFT JOIN FETCH c.movements "
+                        + "WHERE c.sessionNumber = :sessionNumber", CashSession.class)
                     .setParameter("sessionNumber", sessionNumber)
                     .getResultStream()
                     .findFirst();

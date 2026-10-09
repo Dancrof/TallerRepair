@@ -14,11 +14,19 @@ import java.time.format.DateTimeFormatter;
 public class DatabaseBackupService {
 
     private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS");
+    private final SystemSettingsService systemSettingsService = new SystemSettingsService();
 
     public Path createBackup() {
         Path databaseFile = AppConfig.APP_HOME.resolve("tallerrepair.db");
+        String backupPrefix = systemSettingsService.getCompanyProfile().name()
+                .trim().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-|-$", "");
+        if (backupPrefix.isBlank()) {
+            backupPrefix = "tallerrepair";
+        }
         Path backupFile = AppConfig.BACKUPS_DIR.resolve(
-                "tallerrepair-" + LocalDateTime.now().format(BACKUP_TIMESTAMP) + ".db");
+                backupPrefix + "-" + LocalDateTime.now().format(BACKUP_TIMESTAMP) + ".db");
         try {
             if (!Files.isRegularFile(databaseFile)) {
                 throw new IllegalStateException("No se encontró la base de datos: " + databaseFile);

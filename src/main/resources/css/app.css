@@ -98,8 +98,36 @@
     -fx-font-weight: 700;
 }
 
+.session-user-name {
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #10233d;
+}
+
+.session-user-roles {
+    -fx-font-size: 11px;
+    -fx-text-fill: #64748b;
+}
+
 .content-area {
     -fx-background-color: #f4f7fb;
+}
+
+.app-footer {
+    -fx-background-color: rgba(255, 255, 255, 0.78);
+    -fx-border-color: rgba(148, 163, 184, 0.2);
+    -fx-border-width: 1px 0 0 0;
+    -fx-padding: 8px 24px 8px 24px;
+}
+
+.footer-text {
+    -fx-font-size: 11px;
+    -fx-text-fill: #475569;
+}
+
+.footer-version {
+    -fx-font-size: 10px;
+    -fx-text-fill: #64748b;
 }
 
 .content-shell {

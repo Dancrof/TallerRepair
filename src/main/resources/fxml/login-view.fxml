@@ -21,7 +21,7 @@
                 <Insets top="28.0" right="28.0" bottom="28.0" left="28.0"/>
             </padding>
 
-            <Label text="TALLERREPAIR" styleClass="login-brand"/>
+            <Label fx:id="loginBrandLabel" text="TallerRepair" styleClass="login-brand"/>
             <Label text="Acceso al sistema" styleClass="login-title"/>
 
             <TextField fx:id="usernameField" promptText="Usuario" styleClass="login-field"/>

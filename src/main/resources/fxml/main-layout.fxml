@@ -21,7 +21,7 @@
 
             <HBox alignment="CENTER_LEFT" spacing="10.0" styleClass="brand-box">
                 <Label text="TR" styleClass="brand-mark"/>
-                <Label text="TALLERREPAIR" styleClass="brand-name"/>
+                <Label fx:id="systemNameLabel" text="TallerRepair" styleClass="brand-name"/>
             </HBox>
 
             <Button text="Dashboard" userData="dashboard" onAction="#onMenuClick" styleClass="nav-button, active"/>
@@ -33,6 +33,7 @@
             <Button text="Presupuestos" userData="presupuestos" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Caja" userData="caja" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Reportes" userData="reportes" onAction="#onMenuClick" styleClass="nav-button"/>
+            <Button text="Roles y permisos" userData="roles" onAction="#onMenuClick" styleClass="nav-button"/>
             <Button text="Configuración" userData="configuracion" onAction="#onMenuClick" styleClass="nav-button"/>
         </VBox>
     </left>
@@ -51,6 +52,11 @@
                     </VBox>
 
                     <HBox HBox.hgrow="ALWAYS"/>
+                    <VBox alignment="CENTER_RIGHT" spacing="3.0" styleClass="session-identity">
+                        <Label fx:id="sessionUserLabel" text="Usuario" styleClass="session-user-name"/>
+                        <Label fx:id="sessionRoleLabel" text="Roles" styleClass="session-user-roles"/>
+                    </VBox>
+                    <Button text="Cerrar sesión" onAction="#handleLogout" styleClass="secondary-button"/>
                     <Label fx:id="statusBadge" text="Sistema local" styleClass="status-badge"/>
                 </HBox>
             </top>
@@ -58,6 +64,13 @@
             <center>
                 <StackPane fx:id="contentPane" styleClass="content-area"/>
             </center>
+            <bottom>
+                <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="app-footer">
+                    <Label fx:id="footerCopyrightLabel" text="Derechos reservados por TallerRepair. Desarrollado por Dancroff" styleClass="footer-text"/>
+                    <HBox HBox.hgrow="ALWAYS"/>
+                    <Label fx:id="footerVersionLabel" text="Versión 1.0.0" styleClass="footer-version"/>
+                </HBox>
+            </bottom>
         </BorderPane>
     </center>
 </BorderPane>
